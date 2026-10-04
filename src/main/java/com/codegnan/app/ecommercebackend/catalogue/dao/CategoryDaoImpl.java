@@ -1,5 +1,6 @@
 package com.codegnan.app.ecommercebackend.catalogue.dao;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Repository;
@@ -17,16 +18,22 @@ public class CategoryDaoImpl implements CategoryDao {
 
 	@Override
 	public List<CategoryResponseDto> findAllActive() {
+		List<CategoryResponseDto> categoryDtosList = new ArrayList<>();
+
 		var jpql = "SELECT c FROM Category c WHERE c.active = true ORDER BY c.name";
 
-		return entityManager.createQuery(jpql, Category.class)
-				.getResultList()
-				.stream()
-				.map(category -> new CategoryResponseDto(
-						category.getId(),
-						category.getName(),
-						category.getSlug(),
-						category.getDescription()))
-				.toList();
+		List<Category> categoriesList = entityManager.createQuery(jpql, Category.class).getResultList();
+
+		for (var category : categoriesList) {
+			var categoryResponseDto = new CategoryResponseDto(
+					category.getId(),
+					category.getName(),
+					category.getSlug(),
+					category.getDescription());
+
+			categoryDtosList.add(categoryResponseDto);
+		}
+
+		return categoryDtosList;
 	}
 }

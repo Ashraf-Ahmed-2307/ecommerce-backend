@@ -2,8 +2,11 @@ package com.codegnan.app.ecommercebackend.catalogue.dao;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Repository;
 
@@ -11,6 +14,7 @@ import com.codegnan.app.ecommercebackend.catalogue.dto.ProductRequestDto;
 import com.codegnan.app.ecommercebackend.catalogue.dto.ProductResponseDto;
 import com.codegnan.app.ecommercebackend.catalogue.entity.Category;
 import com.codegnan.app.ecommercebackend.catalogue.entity.Product;
+import com.codegnan.app.ecommercebackend.catalogue.entity.ProductImage;
 import com.codegnan.app.ecommercebackend.catalogue.entity.ProductStatus;
 
 import jakarta.persistence.EntityManager;
@@ -52,20 +56,29 @@ public class ProductDaoImpl implements ProductDao {
 
 	@Override
 	public ProductResponseDto findById(long productId) {
+		ProductResponseDto productResponseDto = null;
+
 		var product = entityManager.find(Product.class, productId);
 
-		return product == null ? null : toDto(product);
+		if (product != null) {
+			List<Long> productIds = new ArrayList<>();
+			productIds.add(product.getId());
+
+			var covers = findCoverImages(productIds);
+
+			productResponseDto = toDto(product, covers.get(product.getId()));
+		}
+
+		return productResponseDto;
 	}
 
 	@Override
 	public List<ProductResponseDto> findAll() {
 		var jpql = "SELECT p FROM Product p ORDER BY p.id";
 
-		return entityManager.createQuery(jpql, Product.class)
-				.getResultList()
-				.stream()
-				.map(this::toDto)
-				.toList();
+		List<Product> productsList = entityManager.createQuery(jpql, Product.class).getResultList();
+
+		return toDtos(productsList);
 	}
 
 	@Override
@@ -74,13 +87,12 @@ public class ProductDaoImpl implements ProductDao {
 				+ "WHERE c.id = :categoryId AND c.active = true AND p.status = :status "
 				+ "ORDER BY p.createdAt DESC, p.id DESC";
 
-		return entityManager.createQuery(jpql, Product.class)
+		List<Product> productsList = entityManager.createQuery(jpql, Product.class)
 				.setParameter("categoryId", categoryId)
 				.setParameter("status", ProductStatus.ACTIVE)
-				.getResultList()
-				.stream()
-				.map(this::toDto)
-				.toList();
+				.getResultList();
+
+		return toDtos(productsList);
 	}
 
 	@Override
@@ -106,12 +118,51 @@ public class ProductDaoImpl implements ProductDao {
 		}
 
 		entityManager.remove(product);
-		entityManager.flush();
+		//entityManager.flush();
 
 		return true;
 	}
 
-	private ProductResponseDto toDto(Product product) {
+	private Map<Long, ProductImage> findCoverImages(List<Long> productIds) {
+		Map<Long, ProductImage> covers = new HashMap<>();
+
+		if (productIds.isEmpty()) {
+			return covers;
+		}
+
+		var jpql = "SELECT i FROM ProductImage i WHERE i.productId IN :productIds "
+				+ "AND i.displayOrder = (SELECT MIN(m.displayOrder) FROM ProductImage m WHERE m.productId = i.productId)";
+
+		List<ProductImage> imagesList = entityManager.createQuery(jpql, ProductImage.class)
+				.setParameter("productIds", productIds)
+				.getResultList();
+
+		for (var image : imagesList) {
+			covers.put(image.getProductId(), image);
+		}
+
+		return covers;
+	}
+
+	private List<ProductResponseDto> toDtos(List<Product> productsList) {
+		List<Long> productIds = new ArrayList<>();
+
+		for (var product : productsList) {
+			productIds.add(product.getId());
+		}
+
+		var covers = findCoverImages(productIds);
+
+		List<ProductResponseDto> productDtosList = new ArrayList<>();
+
+		for (var product : productsList) {
+			productDtosList.add(toDto(product, covers.get(product.getId())));
+		}
+
+		return productDtosList;
+	}
+
+	private ProductResponseDto toDto(Product product, ProductImage cover) {
 		return new ProductResponseDto(
 				product.getId(),
 				product.getName(),
@@ -119,7 +170,9 @@ public class ProductDaoImpl implements ProductDao {
 				product.getDescription(),
 				product.getStatus().name(),
 				product.getCreatedAt(),
-				product.getUpdatedAt());
+				product.getUpdatedAt(),
+				cover == null ? null : cover.getImageUrl(),
+				cover == null ? null : cover.getAltText());
 	}
 
 	private String blankToNull(String value) {
